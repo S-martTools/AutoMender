@@ -1,0 +1,22 @@
+# Code/config/moe_lora.yaml
+model_name: "/data/zzm/llm/Qwen2.5-Coder-0.5B-Instruct"  # ← 必填：基座模型（HF 或本地文件夹）
+device: "cuda"            # 或 "cpu"
+dtype: "bfloat16"         # "float32" | "float16" | "bfloat16"
+
+# MoE-LoRA 注入参数
+rank: 8
+alpha: 32.0
+dropout: 0.1
+num_experts: 3
+top_k: 1
+target_modules: ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+
+# 仅包含 MoE-LoRA 新增参数的 state dict（可选；若不填则仅注入未训练的层）
+weights_path: "/data/zzm/llm/Qwen2.5-Coder-0.5B-Instruct-lora-contract-30-3072-withoutprom-moe/moelora_weights_30_2_1.pth"
+
+# 解码参数
+max_new_tokens: 2048
+repetition_penalty: 1.2
+
+# 是否用中文 system prompt
+zh: false
