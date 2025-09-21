@@ -9,6 +9,7 @@ The **MoE-LoRA** model plugs in via a single hook in `core/registry.py`.
 
 ## Folder Layout
 
+```
 .
 ├── README.md
 ├── requirements.txt
@@ -39,6 +40,7 @@ The **MoE-LoRA** model plugs in via a single hook in `core/registry.py`.
 ├── validate.py                # Validation
 └── exp/
     └── run_ablation.py        # ablation
+```
 
 ---
 
