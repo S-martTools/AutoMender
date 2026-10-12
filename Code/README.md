@@ -1,311 +1,576 @@
-# Code — AutoMender Core
+<div align="center">
 
----
+<img src="../assets/automender-mark.svg" alt="AutoMender logo" width="84" />
 
-This folder hosts the **core pipeline** for AutoMender: RAG prompt building, CoT planning, RL (PPO skeleton) with a composite reward, multi-tool detection with weighted voting, and validation (compile/symbolic/gas/structure).  
-The **MoE-LoRA** model plugs in via a single hook in `core/registry.py`.
+# AutoMender Engineering Guide
 
----
+### Training, Inference, Validation, and Reproduction
 
-## Folder Layout
+[![Python](https://img.shields.io/badge/Python-%E2%89%A53.10-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Backbone](https://img.shields.io/badge/Default-Qwen2--7B-7B68EE)](config/default.yaml)
+[![Routing](https://img.shields.io/badge/Routing-Label--conditioned-informational)](automender/models/cmoe_lora.py)
+[![Validation](https://img.shields.io/badge/Validation-Fail--closed-critical)](automender/validation/)
 
-```
-.
-├── README.md
-├── requirements.txt
-├── config/
-│   └── default.yaml
-├── core/
-│   ├── registry.py            # MoE-LoRA  generate_patch
-│   ├── rag.py                 # RAG  Prompt 
-│   ├── cot.py                 # CoT
-│   ├── reward.py              # Score Reward Ω
-│   ├── rl/
-│   │   └── ppo.py             # PPO RL
-│   ├── detectors/
-│   │   ├── base.py            # Ouput
-│   │   ├── smartfast.py       # ST/AS
-│   │   ├── vulhunter.py       # ML
-│   │   ├── symx.py           # SymX
-│   │   ├── slither.py         # Slither CLI
-│   │   ├── securify.py        # Securify CLI
-│   │   ├── ilf.py             # Fuzzer
-│   │   └── aggregator.py      # Detection_weights
-│   └── validate/
-│       ├── compile_check.py   # solc
-│       ├── symexec_check.py   # Symbolic Check
-│       └── gas_similarity.py  # Similarity
-├── preprocess.py              # Preprocess
-├── repair.py                  # Main: Detection→RAG/CoT→MoE-LoRA→Validation
-├── validate.py                # Validation
-└── exp/
-    └── run_ablation.py        # ablation
-```
+[Project overview](../README.md) · [Default configuration](config/default.yaml) · [JSON schemas](schemas/) · [Tests](../tests/)
 
----
+</div>
 
-## ✨ What’s inside
+The `automender` package is the maintained implementation of the AutoMender research artifact. It provides a single command-line interface for data auditing, semantic-domain adaptation, repair fine-tuning, PPO, retrieval, detector aggregation, iterative repair, validation, evaluation, and ablation studies.
 
-- **RAG** (`core/rag.py`) — lightweight retrieval + prompt assembly
-- **CoT** (`core/cot.py`) — plan + patch extraction via `// PATCH BEGIN/END`
-- **Detectors** (`core/detectors/*`) — adapters for tools + **weighted voting** (`aggregator.py`)
-- **Validation** (`core/validate/*`) — compile, symbolic sanity (stub), gas/structure similarity
-- **Reward** (`core/reward.py`) — composite score Ω
-- **RL (PPO)** (`core/rl/ppo.py`) — minimal skeleton wired to the reward
-- **Entries** — `preprocess.py`, `repair.py`, `validate.py`
+Unless a section says otherwise, run the commands below from the repository root.
 
-> Adapters degrade gracefully: if a tool is missing, outputs are neutral so the pipeline still runs.
-
----
-
-## ⚙️ Environment Setup
-
-### 0) Prerequisites
-- **Python** ≥ 3.10
-- (Optional) **CUDA GPU** for CMoE-LoRA acceleration
-- (Optional) **Docker** if you wrap detectors as containers
-
-### 1) Create and activate a virtual environment
-
-**venv (recommended)**
-```bash
-### Linux / macOS
-python3 -m venv .venv
-source .venv/bin/activate
-
-### Windows (PowerShell)
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-````
-
-**Conda (alternative)**
-
-```bash
-conda create -n automender python=3.10 -y
-conda activate automender
-```
-
-### 2) Install Python dependencies
-
-```bash
-pip install --upgrade pip
-pip install -r Code/requirements.txt
-```
-
-### 3) Install Solidity compiler (`solc`)
-
-You need a native `solc` for accurate compilation checks (note: `solcjs` is **not** a drop-in replacement).
-
-**Ubuntu (snap)**
-
-```bash
-sudo snap install solc --classic
-```
-
-**macOS (Homebrew)**
-
-```bash
-brew update && brew install solidity
-```
-
-**Alternative (Docker)**
-
-```bash
-docker run --rm -v "$PWD":/src ethereum/solc:stable --help
-```
-
-Verify:
-
-```bash
-solc --version
-```
-
-### 4) Install detector toolchain
-
-You can integrate real tools later; the stubs already run. For higher fidelity:
-
-**Slither**
-
-```bash
-pip install slither-analyzer
-slither --version
-```
-
-**Securify 2.0 / RSymX / ILF / VulHunter**
-
-* Adapters are provided as **stubs**. Wire your local CLI or service inside:
-
-  * `core/detectors/securify.py`
-  * `core/detectors/rsymx.py`
-  * `core/detectors/ilf.py`
-  * `core/detectors/vulhunter.py`
-* If you use Dockerized tools, call them via `subprocess` in the adapters.
-
-### 5) Configure paths and weights
-
-Edit `Code/config/default.yaml`:
-
-```yaml
-solc_path: "solc"         # set to an absolute path if needed
-detectors:
-  slither_cmd: "slither"
-  securify_cmd: "securify"
-  ilf_cmd: "ilf"
-  rsymx_cmd: "rsymx"
-  smartfast_cmd: "smartfast"
-  vulhunter_cmd: "vulhunter"
-weights_path: "../Detection_weights/default.yaml"
-
-reward:
-  w_bug_removed: 0.5
-  w_no_new_bugs: 0.2
-  w_compile_ok: 0.1
-  w_symexec_ok: 0.1
-  w_gas_struct: 0.1
-
-gas_similarity:
-  leven_threshold: 0.4
-  max_gas_penalty: 0.1
-```
-
-Place your voting weights in `Detection_weights/default.yaml` (reported / not\_reported per bug type per tool).
-
-Edit `Code/config/moe_lora.yaml`:
-
-```yaml
-model_name: "/path/to/base/model"   # HF id or local folder
-device: "cuda"                      # or "cpu"
-dtype: "bfloat16"                   # float32 | float16 | bfloat16
-
-rank: 8
-alpha: 32.0
-dropout: 0.1
-num_experts: 3
-top_k: 1
-target_modules: ["q_proj","k_proj","v_proj","o_proj","gate_proj","up_proj","down_proj"]
-
-weights_path: "/path/to/moelora_weights.pth"  # state-dict for injected layers (optional)
-
-max_new_tokens: 2048
-repetition_penalty: 1.2
-zh: false
-```
-
-> The pipeline imports `generate_patch` from `moe_lora/cmoe_lora.py` via `core/registry.py`.
-> In `repair.py` we call:
+> **Reproduction policy**
 >
-> ```python
-> gen = get_patch_generator()
-> raw_out = gen(prompt, experts=experts, config_path="Code/config/moe_lora.yaml")
-> ```
+> The default `paper` profile fails closed. A missing compiler, detector, behavioral validator, model, or GPU is never interpreted as a successful result. Fake backends exist only in tests and always produce `paper_eligible: false`.
 
----
+## 🧭 Quick Links
 
-## 🚀 Quickstart
+- [🏗️ Architecture](#architecture)
+- [🗂️ Package Layout](#package-layout)
+- [📦 Installation](#installation)
+- [⚙️ Configuration](#configuration)
+- [⌨️ CLI Reference](#cli-reference)
+- [🔄 End-to-End Workflow](#end-to-end-workflow)
+- [🧠 CMoE-LoRA and Training](#cmoe-lora-and-training)
+- [🛡️ Detection and Validation](#detection-and-validation)
+- [🩹 Repair Loop](#repair-loop)
+- [🧪 Experiments](#experiments)
+- [✅ Testing and Acceptance](#testing-and-acceptance)
+- [🧰 Troubleshooting](#troubleshooting)
 
-1. **Preprocess**
+## 🏗️ Architecture
 
-```bash
-python Code/preprocess.py \
-  --src Wild_instances/demo.sol \
-  --out /mnt/data/demo.json
+```mermaid
+flowchart TB
+    subgraph Offline[Offline preparation and training]
+        SC[Semantic contracts] --> AUDIT[Data audit]
+        PAIRS[Defective-fixed pairs] --> AUDIT
+        TESTS[Test datasets] --> AUDIT
+        AUDIT --> DAPT[DAPT: communication adapter]
+        AUDIT --> LABEL[Explicit + detector + diff labeling]
+        LABEL --> SFT[Seven-expert CMoE-LoRA SFT]
+        DAPT --> SFT
+        SFT --> PPO[PPO: 4 validated candidates per input]
+        SC --> INDEX[SQLite FTS5 / BM25]
+        KB[BugDescription.xlsx] --> INDEX
+    end
+
+    subgraph Online[Online repair]
+        CONTRACT[Input contract] --> DETECT[Six-detector voting]
+        DETECT --> PROMPT[Findings + CoT + RAG]
+        INDEX --> PROMPT
+        PROMPT --> MODEL[Hard-routed CMoE-LoRA]
+        PPO --> MODEL
+        MODEL --> CANDIDATE[Complete contract + rationale]
+        CANDIDATE --> VERIFY[Compile + behavior + bugs + gas + change]
+        VERIFY -->|remaining findings and diagnostics| PROMPT
+        VERIFY --> BEST[Lowest-cost valid repair]
+    end
 ```
 
-2. **Repair** (runs detectors → RAG/CoT → CMoE-LoRA → write patch)
+## 🗂️ Package Layout
 
-```bash
-python Code/repair.py \
-  --input /mnt/data/demo.json \
-  --experts reentrancy,arith \
-  --patched /mnt/data/demo_patched.sol \
-  --weights Detection_weights/default.yaml \
-  --config Code/config/default.yaml
+```text
+Code/
+├── automender/
+│   ├── data/              # Solidity tokenization, audit, semantics, pair labeling
+│   ├── knowledge/         # SQLite FTS5/BM25 knowledge index
+│   ├── detectors/         # Detector contracts, Slither parser, signed ensemble
+│   ├── models/            # CMoE-LoRA injection and complete-contract generation
+│   ├── training/          # DAPT, SFT, conflict regularization, incremental SFT, PPO
+│   ├── validation/        # solc, behavior adapter, DTW/Levenshtein, repair cost
+│   ├── pipeline/          # Prompt construction and three-round repair algorithm
+│   ├── experiments/       # Metrics, baselines, matrix generation and execution
+│   ├── cli.py             # Unified `automender` CLI
+│   ├── config.py          # Defaults, YAML merge, and environment injection
+│   ├── taxonomy.py        # 24 bug IDs mapped to seven expert categories
+│   └── types.py           # Stable serializable artifact types
+├── config/
+│   ├── default.yaml       # Strict Qwen2-7B paper profile
+│   ├── llama3-8b.yaml
+│   ├── deepseek-coder-7b.yaml
+│   └── smoke-test.yaml
+├── schemas/               # JSON Schema definitions for public artifacts
+├── pyproject.toml
+├── requirements.txt
+├── requirements-train.txt
+└── requirements-dev.txt
 ```
 
-3. **Validate** (pre vs post)
+The historical `preprocess.py`, `repair.py`, and `validate.py` files are compatibility wrappers. New workflows should use `automender` or `python -m automender`.
+
+## 📦 Installation
+
+### Runtime Only
 
 ```bash
-python Code/validate.py \
-  --orig Wild_instances/demo.sol \
-  --patched /mnt/data/demo_patched.sol \
-  --weights Detection_weights/default.yaml \
-  --report /mnt/data/report.json \
-  --config Code/config/default.yaml
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+pip install -e Code
 ```
 
----
+### Training and Development
 
-## How the pieces fit
+```bash
+pip install -e 'Code[train]'
+pip install -e 'Code[dev]'
+```
 
-* **Detectors** → each adapter returns `{tool, found: {BUGTYPE: 0/1}}`.
-* **Weighted voting** (`aggregator.py`) → sums `reported / not_reported` weights from `Detection_weights/*.yaml`.
-* **RAG/CoT** → `rag.build_prompt(...)` + `cot.plan(...)`, then generator receives the composed `prompt`.
-* **Generator** → `moe_lora/cmoe_lora.py::generate_patch()` produces a patch **wrapped with**:
+The training extra installs PyTorch, Transformers, Accelerate, and Safetensors. Third-party Solidity analyzers and model weights must be installed separately.
 
----
+## ⚙️ Configuration
 
-## 🧪 Detectors & Weighted Voting
+The default profile is [config/default.yaml](config/default.yaml). Alternative profiles extend that file, so detector, optimizer, and validation settings remain consistent.
 
-* Adapters live in `core/detectors/`.
-* `aggregator.py` reads YAML from `Detection_weights/` and sums **reported / not\_reported** weights per bug type.
-* Start from your paper’s weights and calibrate to your environment.
+```bash
+# Global options must precede the subcommand.
+automender --config Code/config/default.yaml doctor
+automender --config Code/config/smoke-test.yaml doctor
+```
 
----
+### Data-Path Environment Variables
 
-## 🧮 Reward & RL
+| Variable | Meaning |
+|---|---|
+| `AUTOMENDER_SEMANTIC_DIR` | Clean semantic Solidity corpus |
+| `AUTOMENDER_PAIRS_CSV` | CSV containing `vulnerable` and `fixed` columns |
+| `AUTOMENDER_TEST1_DIR` | Dataset1 contract directory |
+| `AUTOMENDER_TEST2_DIR` | Dataset2 contract directory |
+| `AUTOMENDER_TEST3_DIR` | Dataset3 contract directory |
+| `AUTOMENDER_OUTPUT_DIR` | Preferred run-output directory |
+| `AUTOMENDER_MODEL` | Local model directory or model identifier override |
 
-* `core/reward.py` computes Ω from:
+Example:
 
-  * bug status change (pre/post detection),
-  * compile/symbolic sanity,
-  * gas/structure similarity.
-* `core/rl/ppo.py` demonstrates rollouts + reward; replace with your trainer when ready.
+```bash
+export AUTOMENDER_SEMANTIC_DIR=/data/contracts/sourcecodes
+export AUTOMENDER_PAIRS_CSV=/data/contracts/paired-smart-contracts.csv
+export AUTOMENDER_TEST1_DIR=/data/contracts/Dataset1_Test
+export AUTOMENDER_TEST2_DIR=/data/contracts/Dataset2
+export AUTOMENDER_TEST3_DIR=/data/contracts/Dataset3
+export AUTOMENDER_OUTPUT_DIR=/data/automender-runs
+```
 
----
+No machine-specific path is stored in a tracked configuration file.
 
-## ✅ Validation
+## ⌨️ CLI Reference
 
-* **Compile**: `compile_check.py` uses `solc` if available; permissive if missing.
-* **Symbolic sanity**: `symexec_check.py` is a placeholder (returns 1.0) — swap in your checker.
-* **Gas/structure**: `gas_similarity.py` uses normalized edit distance; tune thresholds in `config/default.yaml`.
+| Command | Purpose | Principal artifact |
+|---|---|---|
+| `doctor` | Check Python, GPU, model, `solc`, behavior backend, and six detectors | JSON diagnostic |
+| `audit-data` | Enforce corpus scale and whole-contract non-overlap | `data_audit.json` |
+| `prepare-semantic` | Extract hashes and contract semantics | manifest JSONL |
+| `label-pairs` | Generate auditable labels and grouped 95/5 splits | repair JSONL + report |
+| `build-index` | Build the deduplicated FTS5/BM25 index | SQLite database |
+| `train-dapt` | Continue domain training of communication LoRA | adapter checkpoint |
+| `train-sft` | Train repair experts and shared adapter | adapter checkpoint |
+| `train-ppo` | Optimize validated complete-contract trajectories | adapter + value head |
+| `repair` | Run detector-guided iterative repair | Solidity file + report |
+| `validate` | Evaluate an original/repaired pair | quality report |
+| `evaluate` | Aggregate per-contract outcomes | per-seed and summary tables |
+| `ablate` | Generate or execute the experiment matrix | immutable run definitions |
 
----
+Use `automender <command> --help` for command-specific options.
+
+## 🔄 End-to-End Workflow
+
+### 1. 🩺 Environment Diagnosis
+
+```bash
+automender doctor
+```
+
+In the strict profile, this command exits non-zero unless the complete paper environment is available. A typical CPU development machine is expected to fail the paper-readiness check while still being able to run unit tests.
+
+### 2. 🛡️ Mandatory Data Audit
+
+```bash
+automender audit-data --output runs/data_audit.json
+```
+
+The audit enforces the declared semantic corpus:
+
+| Property | Required value |
+|---|---:|
+| Solidity files | 73,391 |
+| Total bytes | 1,075,736,361 |
+| Dataset1 whole-contract overlap | 0 |
+| Dataset2 whole-contract overlap | 0 |
+| Dataset3 whole-contract overlap | 0 |
+
+Each overlap is checked at the byte, normalized-text, and normalized-token levels. Paired samples are also compared against complete test contracts. Internal pair/fragment reuse is reported without deleting rows; a joint normalized-token fingerprint keeps repeated pairs in the same split.
+
+All three training commands invoke this audit automatically.
+
+### 3. 🧱 Semantic Manifest
+
+```bash
+automender prepare-semantic \
+  --source "$AUTOMENDER_SEMANTIC_DIR" \
+  --output runs/semantic
+```
+
+The generated manifest includes relative paths, byte counts, SHA-256 hashes, normalized-token hashes, contracts, inheritance, state variables, functions, modifiers, call relations, and dangerous operations.
+
+### 4. 🏷️ Pair Labeling
+
+```bash
+automender label-pairs \
+  --csv "$AUTOMENDER_PAIRS_CSV" \
+  --manifest explicit_labels.jsonl \
+  --detector-evidence detector_findings.jsonl \
+  --output runs/pairs
+```
+
+Label precedence and confidence rules are:
+
+1. an explicit label manifest has highest priority;
+2. two distinct detectors supporting the same category produce a high-confidence label;
+3. one exact repair rule matching an added diff line also produces a high-confidence label;
+4. low-confidence or unlabeled pairs remain in SFT but activate only communication LoRA.
+
+The explicit manifest and detector-evidence arguments are optional. Without them, exact diff rules provide the initial weak labels. `label_report.json` records per-expert counts, evidence sources, internal duplicate fingerprints, low-confidence ratio, multi-label samples, and split sizes.
+
+### 5. 🔎 Knowledge Index
+
+```bash
+automender build-index \
+  --output runs/knowledge.sqlite \
+  --semantic "$AUTOMENDER_SEMANTIC_DIR" \
+  --bug-description-xlsx Bug_examples/BugDescription.xlsx
+```
+
+Bug/category matches are ranked before general semantic results. The index folds internal documents with the same normalized-token hash, while DAPT continues to use all 73,391 declared files.
+
+## 🧠 CMoE-LoRA and Training
+
+### Seven Fixed Experts
+
+| Expert | Representative bug IDs |
+|---|---|
+| Reentrancy | `RE`, `REN`, `REE` |
+| Arithmetic | `IO` |
+| Unchecked calls | `UCL`, `UCS` |
+| Optimized operations | `ST`, `CNE`, `RR`, `UUS`, `EGL`, `RDS`, `BE`, `AIB`, `CS`, `RTS`, `EF`, `COL` |
+| Access control | `SU`, `AS`, `TO` |
+| Transaction dependence | `TOD` |
+| Block dependence | `TS`, `BP` |
+
+For every target linear layer, the implementation computes:
+
+```text
+base(x) + sum(active expert deltas) + lambda_comm * communication_delta(x)
+```
+
+There is no learned router and no top-k gate. Multiple labels activate multiple experts; inactive experts do not participate in the forward pass and receive no gradient.
+
+### Default Optimization Settings
+
+| Parameter | DAPT | Repair SFT | PPO |
+|---|---:|---:|---:|
+| Epochs | 1 | 3 | 4 per update |
+| Learning rate | 2e-4 | 2e-4 | 1e-5 |
+| Effective batch | 32 | 32 | 32 |
+| Candidates per input | — | — | 4 |
+
+Shared defaults are LoRA rank 8, alpha 32, dropout 0.1, sequence length 3072, AdamW betas `(0.9, 0.999)`, epsilon `1e-8`, zero weight decay, 3% linear warmup, and gradient clipping at 1.0.
+
+### DAPT
+
+```bash
+automender train-dapt --output runs/qwen-dapt
+```
+
+The backbone and all category experts remain frozen. Only communication LoRA is updated.
+
+### Repair SFT
+
+```bash
+automender train-sft \
+  --samples runs/pairs/repair_samples.jsonl \
+  --initial-adapters runs/qwen-dapt \
+  --save-communication-gradients runs/qwen-sft/communication_gradients.pt \
+  --output runs/qwen-sft
+```
+
+For a multi-label sample, conflict regularization is computed only for pairs of experts co-active in that sample. The total loss is:
+
+```text
+L_total = L_repair + 0.1 * mean(max(0, -cos(g_i, g_j)))
+```
+
+Training reports the mean gradient cosine and conflict rate used by the communication/conflict ablation.
+
+### Incremental Category Training
+
+```bash
+automender train-sft \
+  --samples runs/pairs/repair_samples.jsonl \
+  --initial-adapters runs/qwen-sft \
+  --new-category block_dependence \
+  --reference-gradients runs/qwen-sft/communication_gradients.pt \
+  --reg-alpha 1.0 \
+  --output runs/qwen-incremental
+```
+
+Only the new category expert and communication adapter are trainable. Existing experts and the backbone stay frozen; the saved communication-gradient reference implements the incremental drift regularizer.
+
+### PPO
+
+```bash
+automender train-ppo \
+  --rollouts runs/real_rollouts.jsonl \
+  --initial-adapters runs/qwen-sft \
+  --output runs/qwen-ppo
+```
+
+Every `group_id` must contain exactly four complete repair candidates. A rollout row contains at least:
+
+```json
+{
+  "group_id": "contract-001",
+  "prompt": "...",
+  "completion": "<repaired_contract>...</repaired_contract><repair_rationale>...</repair_rationale>",
+  "expert_labels": ["reentrancy"],
+  "quality": {"valid": true, "total_cost": 12.5},
+  "reward": 0.0740740741,
+  "paper_eligible": true
+}
+```
+
+Invalid candidates receive `-1`; a valid candidate receives `1 / (1 + Ω)`. Paper mode rejects fake artifacts, incomplete contracts, group sizes other than four, and rewards inconsistent with the quality record.
+
+## 🛡️ Detection and Validation
+
+### Detector Protocol
+
+SmartFast, VulHunter, RSymX, Securify, and ILF use strict command/JSON adapters. Slither uses its native JSON format. A generic detector must emit either a list or an object containing `findings`:
+
+```json
+{
+  "findings": [
+    {
+      "bug_type": "RE",
+      "path": "input.sol",
+      "line_start": 42,
+      "line_end": 47,
+      "function": "withdraw",
+      "confidence": 1.0,
+      "evidence": "external value call precedes the state update"
+    }
+  ]
+}
+```
+
+Detector states are explicit: `success`, `unavailable`, `timeout`, `error`, or `unsupported`. A positive report uses the configured positive weight. A negative weight is used only when a detector successfully ran and supports that bug type. Every other state is neutral; strict paper mode rejects incomplete toolchains.
+
+The 24-type support matrix and signed implementation defaults are defined in [`../Detection_weights/default.yaml`](../Detection_weights/default.yaml).
+
+### Compilation
+
+The compiler is selected from a manifest override or Solidity pragma and invoked as:
+
+```text
+solc --optimize --gas --bin contract.sol
+```
+
+A missing compiler, unavailable requested version, timeout, or compilation error never returns success. Gas estimates and binary generation are requested in the same compiler invocation and retained in the validation artifact.
+
+### Behavioral Validation
+
+The external behavior adapter receives the original contract, repaired contract, and a validation-case manifest. Every returned case must identify one of two oracle types:
+
+- `repair-invariant`: observable behavior and relevant state transitions must be preserved;
+- `repair-sensitive`: the repaired outcome may change, but the declared security/business property must hold.
+
+Example manifest:
+
+```json
+{
+  "cases": [
+    {
+      "id": "authorized-withdrawal",
+      "oracle": "repair-invariant",
+      "property": "authorized withdrawal preserves the original output and state transition",
+      "inputs": {"caller": "owner", "amount": 1}
+    },
+    {
+      "id": "reentrant-withdrawal",
+      "oracle": "repair-sensitive",
+      "property": "a nested withdrawal cannot transfer more than the recorded balance"
+    }
+  ]
+}
+```
+
+The formal schema is [schemas/validation-cases.schema.json](schemas/validation-cases.schema.json).
+
+### Repair-Quality Cost
+
+A candidate is valid only when it has no residual or newly introduced supported bug and both compilation and behavior checks pass. Valid candidates are ranked by:
+
+```text
+positive_gas_increase + 0.5 * Solidity_token_distance
+```
+
+The default distance is DTW with binary token mismatch. The sensitivity experiment replaces it with normalized-token Levenshtein distance. Invalid candidates receive cost `10,000`; a valid candidate below `5,000` may stop the online loop early.
+
+## 🩹 Repair Loop
+
+The required model output is:
+
+```text
+<repaired_contract>
+pragma solidity ...;
+...complete repaired source...
+</repaired_contract>
+<repair_rationale>
+Explain each modification and why the intended behavior is preserved.
+</repair_rationale>
+```
+
+Fragments, empty/no-op repairs, or uncompilable contracts are invalid. Generated text is never appended to the original source.
+
+```bash
+automender repair \
+  --contract input.sol \
+  --validation-manifest validation_cases.json \
+  --adapters runs/qwen-ppo \
+  --index runs/knowledge.sqlite \
+  --output runs/repaired.sol \
+  --report runs/repair.json
+```
+
+At every iteration, AutoMender re-runs detection and validation, adds remaining findings and diagnostic failures to the next prompt, and retains the lowest-cost valid candidate. The loop stops after at most three rounds. If no valid candidate exists, it returns the latest candidate, remaining findings, and complete diagnostics.
+
+Standalone validation is available with:
+
+```bash
+automender validate \
+  --original input.sol \
+  --repaired runs/repaired.sol \
+  --validation-manifest validation_cases.json \
+  --output runs/validation.json
+```
+
+## 🧪 Experiments
+
+Generate the immutable experiment matrix:
+
+```bash
+automender ablate --output runs/ablation_matrix.json
+```
+
+The 30 unique configurations cover:
+
+- Base, LoRA, MoE-LoRA, MoE-LoRA+CoT, MoE-LoRA+CoT+RL, and full AutoMender;
+- communication/conflict on/off combinations;
+- DTW and normalized-token Levenshtein;
+- seeds 42, 3407, and 2025.
+
+Execute every configuration with a shell-free command template:
+
+```bash
+automender ablate \
+  --output runs/ablation \
+  --command-template 'python experiment_driver.py --config {config} --output {run_dir}'
+```
+
+Available placeholders include `{config}`, `{run_dir}`, `{system}`, `{seed}`, and `{run_id}`. Each directory receives its resolved YAML and orchestration record.
+
+Aggregate per-contract JSONL outcomes:
+
+```bash
+automender evaluate \
+  --results runs/per_contract.jsonl \
+  --output runs/tables.json
+```
+
+The output contains IoU, precision, recall, F1, mean time, and peak GPU memory by system, seed, overall result, severity, bug type, and multi-bug status, followed by cross-seed means and standard deviations.
+
+External repair systems use `ExternalBaselineAdapter`; AutoMender does not replace, reimplement, or fabricate their native results.
+
+## 🗃️ Run Artifacts
+
+Training creates adapter weights, metrics, and a manifest similar to:
+
+```text
+runs/qwen-sft/
+├── adapters.pt
+├── adapter_config.json
+├── training_metrics.json
+└── run_manifest.json
+```
+
+The manifest records the git commit and dirty-state summary, complete resolved configuration, dependency versions, model identifier, data audit/fingerprints, detector/compiler versions, random seed, paper eligibility, and checkpoint lineage.
+
+Public serialized types and their schemas include:
+
+- `Finding` and `DetectionRun`;
+- `ContractSemantics`;
+- `RepairSample`;
+- `RepairCandidate`;
+- `QualityBreakdown`; and
+- `RepairResult`.
+
+## ✅ Testing and Acceptance
+
+Run the deterministic CPU suite:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 \
+PYTHONPATH=Code \
+python -m unittest discover -s tests -v
+```
+
+The suite covers taxonomy, explicit-label precedence, communication-only samples, hard routing, shared adapters, inactive gradients, conflict regularization and second-order backward, vote signs and tool states, distance/cost/reward formulas, complete-contract parsing, compiler failure, toy DAPT→SFT→PPO updates, iterative repair, and early stopping.
+
+### Paper-Level Acceptance
+
+A run is paper-eligible only when all of the following hold:
+
+- the audited corpus is exactly 73,391 files and 1,075,736,361 bytes;
+- every whole-contract test-overlap count is zero;
+- Qwen2-7B has completed DAPT, SFT, and PPO;
+- all six real detectors and matching `solc` versions are available;
+- behavior validation uses real repair-invariant/repair-sensitive cases;
+- all three seeds and declared ablations have immutable artifacts.
+
+Passing the CPU suite demonstrates implementation consistency, not reproduction of manuscript percentages.
 
 ## 🧰 Troubleshooting
 
-* `slither not found`: install Slither or ensure it’s on `PATH`.
-* `solc not found`: install as above or set `solc_path` to an absolute path.
-* Patch not applied: the demo appends the patch for visibility; in production, apply structured diffs.
-* Mixed Solidity versions: align `solc` version with the target contract(s).
+### `doctor` Reports `paper_ready: false`
 
----
+Read the individual check entries. A CPU-only machine without Qwen2-7B and external analyzers is suitable for tests but not for a paper run. Do not switch to the smoke profile for final measurements.
 
-## Running Ways
+### `solc` Exists but Compilation Is Unavailable
+
+A `solc-select` shim may be installed without an active compiler version. Install the version required by the contract pragma and verify it directly:
 
 ```bash
-# Preprocess
-python Code/preprocess.py --src Wild_instances/demo.sol --out /mnt/data/demo.json
-
-# Repair
-python Code/repair.py --input /mnt/data/demo.json \
-  --experts reentrancy,arith \
-  --patched /mnt/data/demo_patched.sol \
-  --weights Detection_weights/default.yaml \
-  --config Code/config/default.yaml
-
-# Validate
-python Code/validate.py --orig Wild_instances/demo.sol \
-  --patched /mnt/data/demo_patched.sol \
-  --weights Detection_weights/default.yaml \
-  --report /mnt/data/report.json
+solc-select install 0.8.20
+solc-select use 0.8.20
+solc --version
 ```
 
----
+### Training Stops at the Audit
 
-## Tips & Troubleshooting
+Inspect `data_audit.json`. Count/size mismatches usually indicate the wrong semantic directory. A non-zero overlap requires removing the complete overlapping contract from the training corpus; partial public-code reuse is not a whole-contract leak and remains separately reported.
 
-- **`solc not found`**: install Solidity or set an absolute `solc_path` in `config/default.yaml`.
-- **CMoE-LoRA loads but outputs no markers**: the pipeline will auto-wrap a fallback patch, but please ensure your model returns the block between `// PATCH BEGIN` and `// PATCH END`.
-- **Detector not installed**: adapters return neutral outputs; the pipeline still works.
-- **CUDA OOM**: reduce `max_new_tokens`, switch `dtype` to `float16`, or use `device: cpu` for debugging.
-- **Different LoRA key names**: if your `weights_path` uses custom keys, remap them before `load_state_dict(strict=False)`.
+### A Detector Reports No Findings but Contributes No Negative Vote
+
+Check its `status`. Only `success` plus declared support for the relevant bug type permits a negative vote. `unavailable`, `timeout`, `error`, and unsupported types are neutral by design.
+
+### PPO Rollout Is Rejected
+
+Confirm that every group contains four candidates, every completion contains a complete tagged Solidity contract, `paper_eligible` is true, and `reward` exactly matches the stored quality record.
+
+## 👩‍💻 Development Notes
+
+- Keep training data, checkpoints, detector outputs, and run directories outside Git.
+- Add new public artifact fields to both `automender/types.py` and the relevant JSON schema.
+- Add a detector only through the strict status/findings/runtime/raw-artifact contract.
+- Preserve the hard-routing invariant: no learned router and no top-k approximation.
+- Never mark fake or incomplete validation as paper-eligible.

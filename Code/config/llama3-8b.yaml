@@ -1,0 +1,2 @@
+extends: default.yaml
+model: {name: meta-llama/Meta-Llama-3-8B-Instruct, dtype: bfloat16, sequence_length: 3072}

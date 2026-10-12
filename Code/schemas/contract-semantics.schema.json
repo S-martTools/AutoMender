@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ContractSemantics",
+  "type": "object",
+  "required": ["path", "contracts", "inheritance", "state_variables", "functions", "modifiers", "calls", "dangerous_operations"],
+  "properties": {
+    "path": {"type": "string"},
+    "contracts": {"type": "array", "items": {"type": "string"}},
+    "inheritance": {"type": "object", "additionalProperties": {"type": "array", "items": {"type": "string"}}},
+    "state_variables": {"type": "array", "items": {"type": "string"}},
+    "functions": {"type": "array", "items": {"type": "string"}},
+    "modifiers": {"type": "array", "items": {"type": "string"}},
+    "calls": {"type": "array", "items": {"type": "string"}},
+    "dangerous_operations": {"type": "array", "items": {"type": "string"}}
+  },
+  "additionalProperties": false
+}

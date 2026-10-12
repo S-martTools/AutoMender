@@ -1,39 +1,74 @@
-# The Examples of Contract Bugs
+<div align="center">
 
-**ID** | **Vulnerability Name** | **Severity** | **ID** | **Vulnerability Name** | **Severity**
---- | --- | --- | --- | --- | ---
-RE     | reentrancy-eth          | High     | UCL    | unchecked-lowlevel      | Medium   
-SU     | suicidal                | High     | UCS    | unchecked-send          | Medium      
-CDC    | controlled-delegatecall | High     | TO     | tx-origin               | Medium      
-AS     | arbitrary-send          | High     | TS    | timestamp              | Low      
-UIS    | uninitialized-state     | High | BP    | block-other-parameters | Low
-UIO    | uninitialized-storage    | High | LLC   | low-level-calls        | Info
-TOD    | TOD-ether/receiver      | High     | MEZ   | msgvalue-equals-zero        | Info     
-IE     | incorrect-equality      | Medium   | ST    | send-transfer          | Opt    
-IO     | integer-overflow        | Medium   | BE    | boolean-equal          | Opt     
+<img src="../assets/automender-mark.svg" alt="AutoMender logo" width="76" />
 
-We combine the contract code to explain the vulnerability examples supported by RSymX in terms of occurrence principle, severity, repair countermeasures, and insights at bytecode level.
+# Smart Contract Bug Knowledge Base
 
-| Bug Category           | Description & Repair Recommendation                                                                                                                                                                                                                                                                                                                                                                          | Bugs                                                  |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------- |
-| Reentrancy             | Reentrant function calls may exhibit unintended behaviors, such as business logic confusion or financial loss. Apply the checks-effects-interactions pattern when calling functions, and use `transfer` for fund transfers.                                                                                                                                                                                  | RE, REN, REE                                          |
-| Arithmetic             | Arithmetic errors caused by overflow or underflow in numerical operations can lead to incorrect results. Verify results and calculation data of arithmetic operations by using `require` statements or the SafeMath library.                                                                                                                                                                                 | IO                                                    |
-| Unchecked calls        | Failure to check the return values of internal or external function calls may result in logic exceptions. Validate the return values of function calls and make actions such as rollback when the call fails.                                                                                                                                                                                                | UCL, UCS                                              |
-| Optimized operations   | Optimized operations can improve runtime efficiency and reduce costs. Such optimizations can also enhance code readability and ease of maintenance, including but not limited to code simplification. Make optimization actions such as simplifying boolean comparisons, removing unused variables, replacing `send` with `transfer`, converting `byte[]` to `bytes`, and declaring functions as `external`. | ST, CNE, RR, UUS, EGL, CS, BE, AIB, RDS, RTS, EF, COL |
-| Access control         | Unrestricted function calls may cause security issues, as attackers can perform critical operations maliciously. Add access controls such as identity verification to protect sensitive operations such as `selfdestruct`.                                                                                                                                                                                   | SU, AS, TO                                            |
-| Transaction dependence | Malicious miners may manipulate transaction orders within the same block to produce different outcomes. Use confirmation mechanisms and mutual exclusion locks to prevent conflicts of contract calls.                                                                                                                                                                                                       | TOD                                                   |
-| Block dependence       | Miners or nodes can predict and manipulate randomness generation using block-related parameters. Use a third-party oracle such as Chainlink to obtain verifiable random values instead of block-related parameters.                                                                                                                                                                                          | TS, BP                                                |
+### 24 Bug Types · 7 Repair Experts · Auditable Guidance
+
+[![Bug Types](https://img.shields.io/badge/Bug%20Types-24-8A2BE2)](#supported-taxonomy)
+[![Experts](https://img.shields.io/badge/Expert%20Categories-7-3776AB)](#expert-categories)
+[![Workbook](https://img.shields.io/badge/Knowledge-Excel-217346?logo=microsoftexcel&logoColor=white)](BugDescription.xlsx)
+
+</div>
+
+This knowledge base documents the vulnerability principles, severity levels, code patterns, and repair guidance used by AutoMender. The taxonomy is shared by pair labeling, retrieval, hard expert routing, detector normalization, and evaluation.
+
+## 🧭 Quick Links
+
+[🧾 Supported Taxonomy](#supported-taxonomy) · [🧩 Expert Categories](#expert-categories) · [📘 Detailed Examples](#bugdescriptionxlsx) · [⚖️ Detection Weights](../Detection_weights/README.md) · [🏠 Project Home](../README.md)
+
+## 🧾 Supported Taxonomy
+
+| ID | Vulnerability | Severity | Expert category |
+|---|---|---|---|
+| RE | `reentrancy-eth` | High | Reentrancy |
+| SU | `suicidal` | High | Access Control |
+| AS | `arbitrary-send` | High | Access Control |
+| TOD | `tod` | High | Transaction Dependence |
+| REN | `reentrancy-no-eth` | Medium | Reentrancy |
+| IO | `integer-overflow` | Medium | Arithmetic |
+| UCL | `unchecked-lowlevel` | Medium | Unchecked Calls |
+| UCS | `unchecked-send` | Medium | Unchecked Calls |
+| TO | `tx-origin` | Medium | Access Control |
+| REE | `reentrancy-events` | Low | Reentrancy |
+| TS | `timestamp` | Low | Block Dependence |
+| BP | `block-other-parameters` | Low | Block Dependence |
+| ST | `send-transfer` | Optimization | Optimized Operations |
+| CNE | `code-no-effects` | Optimization | Optimized Operations |
+| RR | `revert-require` | Optimization | Optimized Operations |
+| UUS | `unused-state` | Optimization | Optimized Operations |
+| EGL | `extra-gas-inloops` | Optimization | Optimized Operations |
+| COL | `costly-operations-loop` | Optimization | Optimized Operations |
+| RDS | `redundant-statements` | Optimization | Optimized Operations |
+| BE | `boolean-equal` | Optimization | Optimized Operations |
+| AIB | `array-instead-bytes` | Optimization | Optimized Operations |
+| CS | `constable-states` | Optimization | Optimized Operations |
+| RTS | `return-struct` | Optimization | Optimized Operations |
+| EF | `external-function` | Optimization | Optimized Operations |
+
+## 🧩 Expert Categories
+
+| Expert category | Repair focus | Bug IDs |
+|---|---|---|
+| Reentrancy | Preserve checks-effects-interactions ordering and external-call safety | RE, REN, REE |
+| Arithmetic | Guard overflow/underflow or use version-appropriate checked arithmetic | IO |
+| Unchecked Calls | Validate low-level call/send results and preserve rollback behavior | UCL, UCS |
+| Optimized Operations | Improve gas, readability, and ineffective or redundant operations | ST, CNE, RR, UUS, EGL, COL, RDS, BE, AIB, CS, RTS, EF |
+| Access Control | Protect privileged transfers, destruction, and caller authentication | SU, AS, TO |
+| Transaction Dependence | Remove unsafe dependence on transaction ordering | TOD |
+| Block Dependence | Replace manipulable block-derived randomness or decisions | TS, BP |
+
+> [!CAUTION]
+> The examples intentionally contain vulnerable and historical Solidity syntax. They are research material, not production-ready contracts. Remediation must be validated against the target compiler, behavioral invariants, and the full detector profile.
+
+## 📘 BugDescription.xlsx
+
+[`BugDescription.xlsx`](BugDescription.xlsx) provides the structured descriptions and repair recommendations used to build the retrieval knowledge base. Representative examples are documented below.
 
 ---
 
-
-## Bug_description.xlsx
-
-This document describes the description of vulnerabilities. Some vulnerabilities are introduced as follows.
-
----
-
-### Reentrancy
+### 🔁 Reentrancy
 
 Reentrant function calls can cause smart contracts to behave in unexpected ways. Below are several types of reentrancy vulnerabilities and corresponding mitigation strategies:
 
@@ -161,7 +196,7 @@ function bug(Called d){
 
 ---
 
-### **Arithmetic**
+### ➗ Arithmetic
 
 Arithmetic errors caused by overflow in numerical operations can lead to incorrect computation results, potentially causing the system or program to behave inconsistently with its intended logic. This may affect the stability and accuracy of the contract's execution.
 
@@ -200,7 +235,7 @@ contract Integeroverflow{
 
 ---
 
-### **Unchecked Calls**
+### 📞 Unchecked Calls
 
 Failing to check the results or parameters of internal/external function calls within a contract can lead to unexpected logical errors or exceptions.
 
@@ -268,7 +303,7 @@ function send_withdraw(address dst, uint value) public payable{
 }
 ```
 
-### **Optimized Operations**
+### ⚡ Optimized Operations
 
 Certain operations in smart contracts can be optimized to enhance execution efficiency and reduce computational costs, such as gas usage at runtime. These optimizations also improve code readability, making future maintenance easier. Optimization techniques include, but are not limited to, algorithm improvements, code simplification, and elimination of unnecessary steps.
 
@@ -715,7 +750,7 @@ contract ContractWithFunctionCalledSuper {
 
 ---
 
-### **Access Control**
+### 🔐 Access Control
 
 Functions lacking proper access restrictions can lead to severe security vulnerabilities. Attackers may exploit these to manipulate critical components of a contract—executing unauthorized operations, stealing sensitive data, or disrupting functionality.
 
@@ -865,7 +900,7 @@ contract TxOrigin {
 
 ---
 
-### **Transaction Dependence**
+### 🔀 Transaction Dependence
 
 In Ethereum, the outcome of smart contract interactions can be affected by the order in which transactions are included in the same block. If contract logic depends on the sequence of independent transactions, it opens the door for **Transaction-Order Dependence (TOD)** attacks, where adversaries manipulate transaction order—typically by offering higher gas fees—to gain unfair advantages or steal user funds.
 
@@ -935,7 +970,7 @@ contract EthTxOrderDependence {
 
 ---
 
-### **Block Dependency**
+### ⛓️ Block Dependence
 
 Relying on block-specific attributes to generate randomness in smart contracts is insecure. Since miners and cooperating nodes have partial or full control over certain block parameters, attackers can exploit this control to manipulate pseudo-random outputs for their benefit.
 
@@ -1073,3 +1108,11 @@ contract RouletteBlock is VRFConsumerBase {
 	}
 }
 ```
+
+---
+
+<div align="center">
+
+[AutoMender Home](../README.md) · [Engineering Guide](../Code/README.md) · [Detection Weights](../Detection_weights/README.md)
+
+</div>

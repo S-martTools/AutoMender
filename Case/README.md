@@ -1,12 +1,30 @@
-# Repair Examples of Defective Wild Contract
+<div align="center">
 
----
+<img src="../assets/automender-mark.svg" alt="AutoMender logo" width="76" />
 
-**Vulnerable Contract: EtherLotto (12 transactions, 1.0E+01 Wei)**
+# EtherLotto Repair Case Study
+
+### A Multi-bug Solidity Repair Walkthrough
+
+[![Case](https://img.shields.io/badge/Case-EtherLotto-8A2BE2)](#case-overview)
+[![Bug Types](https://img.shields.io/badge/Bug%20Types-Multiple-B22222)](#vulnerabilities)
+[![Material](https://img.shields.io/badge/Material-Research-2ea44f)](#research-boundary)
+
+</div>
+
+This case study illustrates how a single contract can combine arithmetic, block-dependence, reentrancy, unchecked-call, and optimization concerns whose repairs interact with one another.
+
+## 🧭 Quick Links
+
+[🎯 Case Overview](#case-overview) · [⚠️ Vulnerabilities](#vulnerabilities) · [🔍 Detailed Walkthrough](#detailed-walkthrough) · [🛠️ Repaired Contract](#repaired-contract) · [🧩 Bug Knowledge Base](../Bug_examples/README.md) · [🏠 Project Home](../README.md)
+
+## 🎯 Case Overview
+
+**Subject:** EtherLotto · **Observed activity:** 12 transactions · **Recorded value:** `1.0E+01 Wei`
 
 The below code presents the main part of the *EtherLotto* contract. This contract is designed to implement a lottery game where each user pays a fixed amount of Ether (referred to as the stake) per draw. This amount is added to a prize pool. If the user wins, they receive the entire prize pool; otherwise, they receive nothing.
 
-### Contract Workflow
+### 🔄 Contract Workflow
 
 When initializing the *EtherLotto* contract, the contract creator sets their own address as the bank address (the state variable `bank`), which is used to collect the game's handling fee during operation. That is, whenever a user wins, the creator receives a fixed fee of `FEE_AMOUNT = 1 ether`.
 
@@ -16,7 +34,7 @@ During the lottery, each user's payment is accumulated into the prize pool. A ra
 
 If `random == 0`, it means the user has won. In this case, the contract owner collects the `FEE_AMOUNT`, and the user receives the remaining balance of the pool, i.e., `pot - FEE_AMOUNT`. The prize pool is then reset to zero, and a new round of the lottery begins. If `random != 0`, the user loses their stake.
 
-### Vulnerabilities
+### ⚠️ Vulnerabilities
 
 This contract contains several vulnerabilities, including:
 
@@ -45,7 +63,9 @@ This contract contains several vulnerabilities, including:
    Finally, the attacker can call `get_money()` to retrieve all funds from the auxiliary contract and self-destruct it. Through this method, the attacker successfully steals funds that were not rightfully theirs.
 
 
-\textbf{*EtherLotto* Vulnerable Contract (12 transactions, 1.0E+01 Wei).} The below code shows the main part of the contract. This contract is designed to initiate a lottery game where users must pay a fixed amount of Ether (referred to as the ticket price) to participate. This amount is added to the prize pool. If a user wins, they receive the entire amount in the current prize pool; otherwise, they receive no reward.
+## 🔍 Detailed Walkthrough
+
+**Vulnerable contract: EtherLotto (12 transactions, `1.0E+01 Wei`).** The code discussed below shows the main logic of the contract. Users pay a fixed ticket price to participate; the stake is added to a prize pool, and a winner receives the current pool.
 
 The contract operates as follows: when the contract creator initializes the *EtherLotto* contract, they set their own account address as the bank address (state variable ``bank''), which is used to collect a service fee during the game process. Specifically, every time a user wins, the contract creator receives a fixed fee amount ``FEE\_AMOUNT = 1 ether''.
 
@@ -61,9 +81,11 @@ However, this contract contains multiple vulnerabilities, including the followin
 (iii) An *integer-overflow} bug exists on line 22. When many users participate in the lottery without winning, the prize pool variable ``pot'' will continuously increase. Once the accumulated amount exceeds $2^{256} - \mathrm{TICKET\_AMOUNT}$ (i.e., $2^{256} - 10$), any subsequent call to ``play()'' will trigger an overflow in the addition ``pot + TICKET\_AMOUNT''. This causes ``pot'' to wrap around to ``pot + TICKET\_AMOUNT - $ 2^{256} $'', drastically reducing the prize pool amount. Although the funds remain in the contract, if the user wins at this point, they will receive only a negligible amount compared to the massive prize pool. 
 (iv) A *timestamp* bug exists on line 24. Since the contract uses ``block.timestamp'' as the primary source of randomness, an attacker can collude with a miner to submit a transaction calling the *EtherLotto* contract's ``play()'' function with a value of 10 ether in a block where ``uint(keccak256(abi.encodePacked(block.timestamp))) \% 2 == 0'' holds. This ensures the attacker wins and receives the entire prize pool. Moreover, the attacker can utilize an auxiliary contract to precompute the random value within the same block to ensure a successful manipulation. As shown in below code, the auxiliary attack contract *EtherLottoTimeAttack* allows the attacker to predefine their address as the contract owner and deposit 10 ether as a reserve for future attacks. The attacker then repeatedly calls the ``attack'' function to precompute the variable ``answer''. When ``answer'' equals zero, the contract performs a cross-contract call to ``play()'' within the same block. Since the block remains the same, both ``answer'' and ``random'' yield the same value, ensuring a win and capturing the entire prize pool. If the ``answer'' is not zero, the call is skipped to avoid wasting funds, ensuring a successful attack with minimal cost. Finally, the attacker can call the ``withdraw()'' function to transfer all funds from the auxiliary contract to their personal account, completing the exploit and capturing the entire prize pool. 
 
-The contract for the TS bug on the *EtherLotto* contract.
+### ⏱️ Timestamp-dependence Attack Contract
+
+The following helper contract illustrates an attack on the timestamp-dependent logic in *EtherLotto*.
 ```
-	pragma solidity ^0.8.1;
+	pragma solidity ^0.6.5;
 	uint constant TICKET_AMOUNT = 10;
 	contract EtherLottoTimeAttack {
 		address owner;
@@ -83,7 +105,9 @@ The contract for the TS bug on the *EtherLotto* contract.
 
 (v) In lines 26\textasciitilde28, both the *reentrancy-eth* and *unchecked-lowlevel* bugs exist simultaneously. First, for the *unchecked-lowlevel* defect, after the user wins, the *call.value* operation is executed. When this operation fails due to the user cannot receive the transfer value at that moment, all the prize money being held inside the *EtherLotto* contract, and the user is unable to receive the prize that originally belongs to them. A more critical bug is the *reentrancy-eth* issue. Since the function ``play()'' uses *call.value* for transferring funds and updates the prize pool amount, ``pot'', only after the transfer, it allows an attacker to perform a reentrancy attack by deploying a helper attack contract, thereby stealing more funds. In the case of this contract, if the contract owner is selfish or the user is an attacker, there could be a situation where the bank or *msg.sender* refers to the address of the attacking contract. To explain the reentrancy attack in more detail, consider the *call.value* operation on line 27. The attacker can construct a helper attack contract *EtherLottoExploit* that contains a callback fallback function (i.e., ``function()'') calling the *play()* function, as shown in below code. When the attacker executes the function ``exploitcall()'' to perform the win operation on the *EtherLotto* contract's *play()* function (this can be combined with the previously discussed *timestamp* logic for mixed attacks to ensure the win), after executing *call.value*, it triggers the callback function of the *EtherLottoExploit* contract. This causes the *play()* function to be called repeatedly. Since the transaction is likely still in the same block, the variable *random* calculated by the *play()* function is still zero, allowing the attacker to repeatedly claim the prize *pot* (when the prize pool has sufficient funds). This is because the variable *pot* was not reset to zero before the *call.value* operation. Therefore, the attacker can exploit this bug to continually steal assets from the *EtherLotto* contract until all the gas resources for the calls are consumed, or the assets in the contract are depleted. Finally, the attacker can call the helper contract's function ``get\_money()'' to obtain the entire balance of the helper contract and then destroy the contract. Through this process, the attacker obtains funds that originally did not belong to them. 
 
-The contract for the RE bug on the *EtherLotto* contract.
+### 🔁 Reentrancy Attack Contract
+
+The following helper contract illustrates the reentrancy path against *EtherLotto*.
 ```
 	contract EtherLottoExploit {
 		address owner; //Attack settings
@@ -107,7 +131,9 @@ The contract for the RE bug on the *EtherLotto* contract.
 
 Moreover, if the *EtherLotto* contract owner is dishonest or uses a malicious bank address, the bank could be the address of a helper attack contract, as shown in above code. This contract is simpler compared to the *EtherLottoExploit* attack contract; it only requires the function ``set(address)'' to set the *EtherLotto* contract address and an initial funding of 10 ether, and the callback function calls the *play()* function. This is because when the bank address receives the fee ``FEE\_AMOUNT'', it automatically triggers the fallback function of the helper attack contract *EtherLottoBank*, which calls the *play()* function repeatedly. Since the transaction might still be in the same block, the variable *random* remains zero, causing the bank account to repeatedly collect fees. Although the cost of each contract call is greater than the reward, when the condition ``TICKET\_AMOUNT > FEE\_AMOUNT'' holds true, meaning there is a profit, an attack will occur. Therefore, developers should be cautious of such issues during contract development and avoid suspiciously dangerous operations whenever possible. 
 
-The dishonest contract with Bank account for the RE bug.
+### 🏦 Malicious Bank Contract
+
+The following helper contract illustrates the dishonest-bank reentrancy scenario.
 ```
 	contract EtherLottoBank {
 		address owner; //Attack settings
@@ -132,31 +158,35 @@ The dishonest contract with Bank account for the RE bug.
 
 As can be seen, the *EtherLotto* contract contains many bugs that are close to each other, and there is an interdependency in the fixes. For example, in line 27, there are *reentrancy-eth*, *unchecked-lowlevel*, and *integer-underflow* vulnerabilities. When fixing these, the variables and the positions of the fixes need to be adjusted uniformly. This presents certain challenges for bug patching. However, AutoMender accurately fixes all the vulnerabilities mentioned above, as shown in the green color part of below code. This can be attributed to the ability of AutoMender to perceive the contract's context and semantics through an enhanced LLM, understand the variable names and function purposes, and maintain expert-level repair capabilities for major bug categories, which are powered by the MoE structure, CoT reasoning, and RL fine-turning.  Additionally, the communication lora is designed to eliminate conflicts and biases between different bug-category repair strategies. 
 
-The *EtherLotto* contract after repair.
+## 🛠️ Repaired Contract
+
+The following listing records the repaired version discussed in the manuscript.
 ```
-	pragma solidity ^0.8.1;
-	import {VRFConsumerBase} from "@chainlink/contracts/src/v0.8/vrf/VRFConsumerBase.sol";
+	pragma solidity ^0.6.5;
+	import {VRFConsumerBase} from "@chainlink/contracts@0.2.1/src/v0.6/VRFConsumerBase.sol";
 	contract EtherLotto is VRFConsumerBase{		
-		uint constant TICKET_AMOUNT = 10; // Amount of ether needed for participating in the lottery.
-		uint constant FEE_AMOUNT = 1; // Fixed amount fee for each lottery game.
-		address payable public bank; // Address where fee is sent.
-		uint public pot; // Public jackpot that each participant can win (minus fee).
+		uint constant TICKET_AMOUNT = 10;  
+		uint constant FEE_AMOUNT = 1;  
+		address payable public bank;  
+		uint public pot;  
 		bytes32 internal keyHash;
 		uint256 internal fee;
+		mapping(bytes32 => address) private players;
 		// Lottery constructor sets bank account from the smart-contract owner.
-		constructor(address _VRFCoord, address _LinkTkn, bytes32 _keyHash, uint256 _fee) VRFConsumerBase(_VRFCoord, _LinkTkn) public payable {
+		constructor(address _VRFCoordinator, address _LinkToken, bytes32 _keyHash, uint256 _fee) VRFConsumerBase(_VRFCoordinator, _LinkToken) public payable {
 			bank = payable(msg.sender);
 			keyHash = _keyHash;
 			fee = _fee;
 		}
 		function fulfillRandomness(bytes32 requestId, uint256 randomness) internal override {
 			uint random = randomness % 2;
+			address payable player = payable(players[requestId]);
+			delete players[requestId];
 			if (random == 0) {
+				pot = 0;  
+				bank.transfer(FEE_AMOUNT);  
 				require(pot >= FEE_AMOUNT);
-				uint reward = pot - FEE_AMOUNT; //Record reward.
-				pot = 0; // Restart jackpot.
-				bank.transfer(FEE_AMOUNT); // Send fee to bank account.
-				payable(msg.sender).transfer(pot - FEE_AMOUNT); // Send jackpot to winner.
+				player.transfer(pot - FEE_AMOUNT);
 			}
 		}
 		// Public function for playing lottery. 
@@ -167,23 +197,38 @@ The *EtherLotto* contract after repair.
 			pot += msg.value;
 			require(pot >= msg.value);
 			// Compute some *almost random* value for selecting winner from current transaction.
-			requestRandomness(keyHash, fee);
+			bytes32 requestId = requestRandomness(keyHash, fee);
+			players[requestId] = msg.sender;
 		}
 	}
 ```
 
-In the contract fix code, the specific modifications for the vulnerabilities mentioned above are as follows:
+### 🧾 Repair Summary
 
-(i) In lines 6 and 8, the state variables ``TICKET\_AMOUNT'' and ``FEE\_AMOUNT'' are marked as static variables to address the *constable-states* optimization issue, thus saving gas costs when accessing the variables.
+The repair makes the following changes:
 
-(ii) In line 20, the visibility of the function ``play()'' is changed to external to resolve the *external-function* optimization issue, which reduces the gas costs when the function is called.
+(i) In lines 4 and 5, the state variables ``TICKET\_AMOUNT'' and ``FEE\_AMOUNT'' are marked as static variables to address the *constable-states* optimization issue, thus saving gas costs when accessing the variables.
 
-(iii) In lines 23 and 35, the *require* functions are used to validate the relationship between the addition and substraction results of variables to address the *integer-overflow* bug and ensure the correctness of the operation.
+(ii) In line 29, the visibility of the function ``play()'' is changed to external to resolve the *external-function* optimization issue, which reduces the gas costs when the function is called.
+
+(iii) In lines 24 and 34, the *require* functions are used to validate the relationship between the addition and substraction results of variables to address the *integer-overflow* bug and ensure the correctness of the operation.
 
 (iv) To solve the *timestamp* bug, the contract uses **Chainlink VRF** (a third-party oracle) to generate random numbers. First, the contract inherits the **VRFConsumerBase** contract, and in the constructor, the *keyHash* and *fee* parameters are set. Then, the function ``requestRandomness()'' is called to generate random numbers, which will automatically call the overloaded function ``fulfillRandomness()'', allowing the random number *randomness* to be obtained within that function. Therefore, AutoMender calls ``requestRandomness()'' in the function *play()* and continues the remaining checks and prize operations in *fulfillRandomness()* to prevent the random number from being predicted in advance by attackers.
 
-(v) In lines 19 to 22, the *transfer* function replaces the *call.value* operation, and the **check-effects-interactions** pattern is used to move the reset operation ``pot=0'' to before the *transfer* call, addressing the *reentrancy-eth* and *unchecked-lowlevel* vulnerabilities, ensuring the security of the transfer operation.
+(v) In lines 23 to 25, the *transfer* function replaces the *call.value* operation, and the **check-effects-interactions** pattern is used to move the reset operation ``pot=0'' to before the *transfer* call, addressing the *reentrancy-eth* and *unchecked-lowlevel* vulnerabilities, ensuring the security of the transfer operation.
 
-(vi) In line 21, the *require* statement is used to perform a size check on the subtraction operation ``pot - FEE\_AMOUNT'' in advance, thereby preventing the *integer-underflow* issue.
+(vi) In line 24, the *require* statement is used to perform a size check on the subtraction operation ``pot - FEE\_AMOUNT'' in advance, thereby preventing the *integer-underflow* issue.
 
-However, due to the limited number of vulnerabilities that the static fix template can address and its inability to represent complex fix operations, the current method cannot fully fix this bug. Additionally, for the GPT-4o model, since it has not been systematically trained on the TS issue, it is also unable to fully fix these vulnerabilities.
+However, static repair templates have difficulty representing the interacting edits required by this case. The example motivates AutoMender's combination of contract-level semantic context, specialized repair knowledge, and validation-driven candidate selection.
+
+## 🧪 Research Boundary
+
+This page preserves an illustrative manuscript case, including historical Solidity idioms and abbreviated listings. It is not a fresh execution report and must not be treated as proof that the shown contract is production-safe. A reproducible result requires the complete source, matching compiler, all six detector backends, behavioral oracles, and the generated validation artifact.
+
+---
+
+<div align="center">
+
+[AutoMender Home](../README.md) · [Bug Knowledge Base](../Bug_examples/README.md) · [Wild Instances](../Wild_instances/README.md)
+
+</div>

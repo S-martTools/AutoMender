@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RepairCandidate",
+  "type": "object",
+  "required": ["contract", "rationale", "raw_output", "iteration", "parse_ok"],
+  "properties": {
+    "contract": {"type": "string"},
+    "rationale": {"type": "string"},
+    "raw_output": {"type": "string"},
+    "iteration": {"type": "integer", "minimum": 0, "maximum": 3},
+    "parse_ok": {"type": "boolean"}
+  },
+  "additionalProperties": false
+}

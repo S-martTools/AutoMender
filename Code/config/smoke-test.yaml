@@ -1,0 +1,7 @@
+extends: default.yaml
+profile: smoke
+strict: false
+model: {name: hf-internal-testing/tiny-random-Qwen2ForCausalLM, dtype: float32, device: cpu, sequence_length: 128, target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]}
+dapt: {epochs: 1, effective_batch_size: 2, micro_batch_size: 1}
+sft: {epochs: 1, effective_batch_size: 2, micro_batch_size: 1}
+ppo: {candidates: 4, epochs: 1, batch_size: 2}

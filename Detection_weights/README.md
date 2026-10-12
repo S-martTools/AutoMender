@@ -1,4 +1,24 @@
+<div align="center">
+
+<img src="../assets/automender-mark.svg" alt="AutoMender logo" width="76" />
+
 # Detection Weights
+
+### Signed Evidence for the Six-Detector Ensemble
+
+[![Bug Types](https://img.shields.io/badge/Bug%20Types-24-8A2BE2)](../Bug_examples/README.md)
+[![Detectors](https://img.shields.io/badge/Detectors-6-3776AB)](#weight-matrix)
+[![Voting](https://img.shields.io/badge/Voting-Signed-2ea44f)](#runtime-semantics)
+
+</div>
+
+AutoMender combines SmartFast, VulHunter, RSymX, Slither, Securify 2.0, and ILF using bug-specific evidence weights. A reported finding contributes positive evidence; a successful, supported, but unreported check contributes negative evidence. A tool that is unsupported, unavailable, timed out, or failed contributes no vote.
+
+## 🧭 Quick Links
+
+[⚖️ Weight Matrix](#weight-matrix) · [🧮 Runtime Semantics](#runtime-semantics) · [🧠 Assignment Rationale](#weight-assignment-rationale) · [⚙️ Executable Defaults](default.yaml) · [🏠 Project Home](../README.md)
+
+## ⚖️ Weight Matrix
 
 |   ID | Bug  | SmartFast N | SmartFast P | VulHunter N | VulHunter P | SymX N | SymX P | Slither N | Slither P | Securify2.0 N | Securify2.0 P | ILF N | ILF P |
 | ---: | :--: | ----------: | ----------: | ----------: | ----------: | ------: | ------: | --------: | --------: | ------------: | ------------: | ----: | ----: |
@@ -27,13 +47,49 @@
 |   23 | RTS  |           3 |           3 |           - |           - |       - |       - |         2 |         2 |             - |             - |     - |     - |
 |   24 |  EF  |           3 |           3 |           2 |           2 |       - |       - |         2 |         2 |             1 |             1 |     - |     - |
 
-> N refers to the bug was not reported, and P indicates the tool detect the bug.
+`P` is the positive confidence magnitude when a detector reports the bug. `N` is the negative confidence magnitude when that detector successfully runs, supports the bug type, and does not report it. A dash means the detector is not part of the voting set for that bug type.
 
-## Weight Assignment Guidelines
+## 🧮 Runtime Semantics
 
-1. **Pattern-matching (SmartFast & Slither & Securify2.0).**
-    SmartFast matches against **source-level semantics**, so it is accurate for many **optimization-severity** issues. For example, the **ST** bug can be directly identified by matching `send` operations in the source. Therefore, SmartFast receives **higher confidence (weights)** for **bugs #13–#24**.In addition, for **SU** and **AS**, because SmartFast scans the entire source code, *not detecting* SU/AS strongly suggests they are absent; we thus set the **“not reported” weight to 3** for these two.Note that some problems exist **only at the source level** (e.g., **CNE** is filtered out by the compiler at build time). Such issues can **only** be detected by SmartFast—this is why we combine **bytecode-level** detectors with **source-code** analyzers.
-2. **Symbolic execution (SymX) & fuzzing (ILF).**
-    SymX and ILF generally achieve **higher precision** (thus **higher weights**) because they observe **runtime states** and can produce **concrete inputs** that trigger vulnerabilities. However, ILF has **incomplete detection logic** for some issues, which leads to **false positives**, so we **downweight** ILF for **TS** and **BP**. The biggest challenge for both approaches is **code coverage**: a missed finding may simply mean the vulnerable path wasn’t explored. To prevent such misses from skewing results, **our system (AutoMender)** adopts a **conservative scheme** and sets the **“not reported” weight to 1** for these tools.
-3. **Machine learning (VulHunter).**
-    VulHunter extracts **execution paths** as instances, which generally makes it **more precise** than tools like **Slither** and **Securify 2.0**. That said, potential **model bias** during training remains, so we set **both “not reported” and “reported” weights to 2** for VulHunter.
+For bug type `b`, the aggregate detector score is:
+
+```text
+score(b) = Σ reported_weight(tool, b) - Σ not_reported_weight(tool, b)
+```
+
+The second sum includes only tools whose run status is `success` and whose adapter explicitly declares support for `b`.
+
+| Detector outcome | Vote |
+|---|---:|
+| Supported and reported | `+P` |
+| Supported, successful, and not reported | `-N` |
+| Unsupported bug type | `0` |
+| Unavailable executable/model | `0` |
+| Timeout or execution error | `0` |
+| Missing or malformed output | `0` |
+
+This distinction prevents an absent or failed tool from being interpreted as evidence that a vulnerability is not present.
+
+## 🧠 Weight Assignment Rationale
+
+1. **Source and pattern analyzers — SmartFast, Slither, and Securify 2.0.** SmartFast operates over source-level semantics and is therefore assigned stronger confidence for several optimization findings. Some patterns, such as code with no effects (CNE), may disappear during compilation, which motivates combining source and bytecode analysis. For suicidal (SU) and arbitrary-send (AS) findings, a successful whole-source analysis also provides comparatively strong negative evidence.
+
+2. **Symbolic execution and fuzzing — RSymX and ILF.** Runtime-state exploration and concrete triggering inputs can provide strong positive evidence. Their path coverage is incomplete, however, so a missed report is intentionally weak negative evidence. ILF is further downweighted for timestamp (TS) and block-parameter (BP) findings.
+
+3. **Learning-based analysis — VulHunter.** VulHunter analyzes execution-path representations. The matrix uses balanced confidence magnitudes while retaining conservative treatment of possible model bias.
+
+## ⚙️ Executable Configuration
+
+[`default.yaml`](default.yaml) defines the detector/bug support matrix consumed by the implementation. Its current `reported: 1.0` and `not_reported: -1.0` values are explicitly documented as **equal-magnitude implementation defaults**; the detailed table above records the manuscript's confidence design. Experimental reports must record the exact YAML fingerprint in the run manifest so the two settings cannot be conflated.
+
+## 🔗 Bug Identifiers
+
+The 24 IDs and their seven expert categories are defined in the [bug knowledge base](../Bug_examples/README.md). Adapter-specific detector names are normalized to these IDs before voting.
+
+---
+
+<div align="center">
+
+[AutoMender Home](../README.md) · [Engineering Guide](../Code/README.md) · [Bug Knowledge Base](../Bug_examples/README.md)
+
+</div>

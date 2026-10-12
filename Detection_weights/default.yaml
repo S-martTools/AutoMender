@@ -1,0 +1,92 @@
+# Equal-magnitude implementation defaults over Table V's supported-tool matrix.
+# A missing entry is unsupported. Only status=success may cast not_reported.
+standard: &standard {reported: 1.0, not_reported: -1.0}
+tools:
+  SmartFast:
+    RE: *standard
+    SU: *standard
+    AS: *standard
+    REN: *standard
+    IO: *standard
+    UCL: *standard
+    UCS: *standard
+    TO: *standard
+    REE: *standard
+    TS: *standard
+    BP: *standard
+    ST: *standard
+    CNE: *standard
+    RR: *standard
+    UUS: *standard
+    EGL: *standard
+    COL: *standard
+    RDS: *standard
+    BE: *standard
+    AIB: *standard
+    CS: *standard
+    RTS: *standard
+    EF: *standard
+  VulHunter:
+    RE: *standard
+    SU: *standard
+    AS: *standard
+    TOD: *standard
+    IO: *standard
+    UCL: *standard
+    UCS: *standard
+    TO: *standard
+    TS: *standard
+    BP: *standard
+    ST: *standard
+    UUS: *standard
+    COL: *standard
+    BE: *standard
+    AIB: *standard
+    EF: *standard
+  RSymX:
+    RE: *standard
+    SU: *standard
+    AS: *standard
+    TOD: *standard
+    IO: *standard
+    UCL: *standard
+    UCS: *standard
+    TO: *standard
+    TS: *standard
+    BP: *standard
+    ST: *standard
+    BE: *standard
+  Slither:
+    RE: *standard
+    SU: *standard
+    AS: *standard
+    REN: *standard
+    UCL: *standard
+    UCS: *standard
+    TO: *standard
+    REE: *standard
+    TS: *standard
+    UUS: *standard
+    COL: *standard
+    RDS: *standard
+    BE: *standard
+    CS: *standard
+    EF: *standard
+  Securify:
+    RE: *standard
+    SU: *standard
+    TOD: *standard
+    REN: *standard
+    UCL: *standard
+    UCS: *standard
+    TO: *standard
+    TS: *standard
+    UUS: *standard
+    CS: *standard
+    EF: *standard
+  ILF:
+    SU: *standard
+    AS: *standard
+    UCL: *standard
+    TS: *standard
+    BP: *standard

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RepairResult",
+  "type": "object",
+  "required": ["original_path", "final_contract", "rationale", "success", "stop_reason", "iterations", "remaining_findings", "candidates", "paper_eligible"],
+  "properties": {
+    "original_path": {"type": "string"},
+    "final_contract": {"type": "string"},
+    "rationale": {"type": "string"},
+    "success": {"type": "boolean"},
+    "stop_reason": {"enum": ["valid_below_threshold", "best_valid_after_max_iterations", "no_valid_candidate"]},
+    "iterations": {"type": "integer", "minimum": 0, "maximum": 3},
+    "best_quality": {"type": ["object", "null"]},
+    "remaining_findings": {"type": "array", "items": {"$ref": "finding.schema.json"}},
+    "candidates": {"type": "array", "items": {"type": "object"}},
+    "paper_eligible": {"type": "boolean"}
+  },
+  "additionalProperties": false
+}

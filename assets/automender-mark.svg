@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160" role="img" aria-labelledby="title description">
+  <title id="title">AutoMender logo</title>
+  <desc id="description">A shield containing code brackets and a repair sparkle</desc>
+  <defs>
+    <linearGradient id="shield" x1="20" y1="12" x2="140" y2="148" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6d5dfc"/>
+      <stop offset="0.52" stop-color="#5865e8"/>
+      <stop offset="1" stop-color="#16b8a6"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="42" y1="31" x2="119" y2="132" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffffff" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.08"/>
+    </linearGradient>
+    <filter id="shadow" x="-25%" y="-20%" width="150%" height="155%">
+      <feDropShadow dx="0" dy="7" stdDeviation="7" flood-color="#111827" flood-opacity="0.24"/>
+    </filter>
+  </defs>
+
+  <path d="M80 8 139 29v42c0 38-22 65-59 81C43 136 21 109 21 71V29L80 8Z" fill="url(#shield)" filter="url(#shadow)"/>
+  <path d="M80 17 130 35v36c0 32-17.8 56.3-50 71.4C47.8 127.3 30 103 30 71V35L80 17Z" fill="none" stroke="url(#edge)" stroke-width="3"/>
+
+  <path d="m61 53-20 20 20 20" fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m99 53 20 20-20 20" fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m89 45-18 57" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round" opacity="0.96"/>
+
+  <circle cx="114" cy="112" r="23" fill="#0f172a" stroke="#fff" stroke-width="4"/>
+  <path d="M114 97v30M99 112h30" stroke="#5eead4" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="114" cy="112" r="4" fill="#fff"/>
+</svg>

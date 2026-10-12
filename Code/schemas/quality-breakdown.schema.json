@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "QualityBreakdown",
+  "type": "object",
+  "required": ["residual_bugs", "new_bugs", "vulnerability_cost", "compile_ok", "behavior_ok", "runtime_valid", "gas_increase", "token_change", "change_cost", "valid", "total_cost"],
+  "properties": {
+    "residual_bugs": {"type": "integer", "minimum": 0},
+    "new_bugs": {"type": "integer", "minimum": 0},
+    "vulnerability_cost": {"type": "number", "minimum": 0},
+    "compile_ok": {"type": "boolean"},
+    "behavior_ok": {"type": "boolean"},
+    "runtime_valid": {"type": "boolean"},
+    "gas_before": {"type": ["integer", "null"]},
+    "gas_after": {"type": ["integer", "null"]},
+    "gas_increase": {"type": "number", "minimum": 0},
+    "token_change": {"type": "number", "minimum": 0},
+    "change_cost": {"type": "number", "minimum": 0},
+    "valid": {"type": "boolean"},
+    "total_cost": {"type": "number", "minimum": 0}
+  },
+  "additionalProperties": false
+}

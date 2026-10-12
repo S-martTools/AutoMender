@@ -1,10 +1,52 @@
-# The Examples of Incident Contracts
+<div align="center">
 
-To demonstrate the effectiveness of AutoMender, we apply it to real-world contracts deployed on Ethereum in Dataset\_2 and public bug incident contracts from Dataset\_3. 
+<img src="../assets/automender-mark.svg" alt="AutoMender logo" width="76" />
 
-## Wild Ethereum Contract Instances
+# Wild Ethereum Contract Instances
 
-The *ERC20* contract after repair.
+### Dataset 2 · On-chain Solidity Repair Examples
+
+[![Corpus A](https://img.shields.io/badge/Source%20Archive-4%2C980-3776AB)](dataset2_4980_source_codes.rar)
+[![Corpus B](https://img.shields.io/badge/Source%20Archive-8%2C433-8A2BE2)](dataset2_8433_source_codes.rar)
+[![Purpose](https://img.shields.io/badge/Purpose-Evaluation-2ea44f)](#dataset-scope)
+
+</div>
+
+Dataset 2 contains real-world Ethereum contract source snapshots and compiler-version metadata used for wild-contract evaluation. Historical incident contracts are maintained separately as [Dataset 3](../Security_incidents/README.md).
+
+## 🧭 Quick Links
+
+[📦 Dataset Scope](#dataset-scope) · [🔍 Training Separation](#training-corpus-separation) · [🪙 ERC20](#erc20-repair-excerpt) · [🏦 TokenBank](#tokenbank-multi-bug-case) · [👛 Wallet](#wallet-version-aware-case) · [🔐 PrivateDeposit](#privatedeposit-multi-bug-case) · [🏠 Project Home](../README.md)
+
+## 📦 Dataset Scope
+
+| Resource | Description |
+|---|---|
+| [`dataset2_4980_source_codes.rar`](dataset2_4980_source_codes.rar) | Source-code archive for the 4,980-contract collection |
+| [`dataset2_4980_solc_versions.csv`](dataset2_4980_solc_versions.csv) | Compiler-version mapping for the 4,980-contract collection |
+| [`dataset2_8433_source_codes.rar`](dataset2_8433_source_codes.rar) | Source-code archive for the 8,433-contract collection |
+| [`dataset2_8433_solc_versions.csv`](dataset2_8433_solc_versions.csv) | Compiler-version mapping for the 8,433-contract collection |
+| [`dataset2_examples.xlsx`](dataset2_examples.xlsx) | Curated example metadata |
+
+Dataset 2 is evaluation-only. Its contracts must remain outside domain adaptation, supervised training, PPO rollouts, and retrieval-index construction.
+
+## 🔍 Training-Corpus Separation
+
+The data-separation audit compares all 13,413 Dataset2 contracts with the cleaned semantic corpus and all 8,930 sides of the 4,465 labeled defective-fixed pairs.
+
+| Training source | Comparison | Observed overlap |
+|---|---|---:|
+| Cleaned semantic corpus (73,391 contracts) | Byte-exact whole contract | 0/13,413 |
+| Cleaned semantic corpus (73,391 contracts) | Normalized-text whole contract | 0/13,413 |
+| Cleaned semantic corpus (73,391 contracts) | Normalized-token whole contract | 0/13,413 |
+| Defective-fixed corpus (4,465 pairs; 8,930 fragment sides) | Whole-fragment normalized text | 0/8,930 |
+| Defective-fixed corpus (4,465 pairs; 8,930 fragment sides) | Whole-fragment normalized tokens | 0/8,930 |
+
+The paired-data comparison tests complete fragment equality against complete Dataset2 contracts; it does not treat short shared Solidity idioms as duplicate samples.
+
+## 🪙 ERC20 Repair Excerpt
+
+The following excerpt records an ERC20 repair example.
 ```
 	contract ERC20 {
 		event Transfer( address indexed from, address indexed to, uint256 value );
@@ -44,7 +86,9 @@ The *ERC20* contract after repair.
 	}
 ```
 
-The *TokenBank* contract.
+## 🏦 TokenBank Multi-bug Case
+
+### Vulnerable Contract
 ```
 	contract TokenBank is Token {
 		address public owner;
@@ -74,7 +118,9 @@ The *TokenBank* contract.
 
 **TokenBank bug Contract (18 transactions, 1.0E+18 Wei).** This contract is a "bank" contract code used for managing assets, with the main part shown in above figure. According to the logic presented in the contract, the contract owner can set a minimum deposit amount ''MinDeposit=1 ether'' when creating the contract. Subsequently, users can call the function ''Deposit()'' to deposit funds into the contract’s account. When users need to withdraw funds, they contact the contract owner (similar to going to the "bank" and speaking with a teller) to perform the withdrawal operation.
 
-The contract for the *reentrancy-eth* bug attack on the *PrivateDeposit* contract.
+### Reentrancy Attack Contract
+
+The following helper contract illustrates the `reentrancy-eth` attack path against *TokenBank*.
 ```
 	contract TokenBankExploit {
 		address owner; //Attack settings
@@ -103,11 +149,11 @@ However, this contract also contains multiple bugs. Specifically:
 
 (ii) In line 12, there is an *integer-overflow* bug. As the balance of the depositing account continues to accumulate, the addition operation ''Holders[msg.sender] += msg.value'' may overflow, causing the account balance to suddenly decrease to ''Holders[msg.sender] + msg.value - $ 2^{256} $''.
 
-(iii) In line 18, the *call.value* operation contains *unchecked-lowlevel*, *code-no-effects*, and *reentrancy-eth* issues. First, the *call.value* does not check the return value of the call. When the call fails, the account \_addr does not receive the transferred funds, but its balance in the *TokenBank* contract is reduced. Second, since the transfer operation *call.value* lacks the data field, although the contract compiler does not report a compilation error, the operation has no effect when called, causing the user to execute a withdrawal operation while the contract balance is deducted without actually receiving the transfer, leading to economic loss. Finally, because the operation ''Holders[\_addr] -= \_wei'' is performed after the *call.value*, a malicious attacker could exploit a reentrancy attack. Specifically, the attacker can construct a helper attack contract *TokenBankExploit* that contains a callback fallback function calling the function ''WithdrawToHolder()'' as shown in above code. When the attacker executes the function ''exploitcall()'' to sequentially complete the deposit, owner initialization, and withdrawal operations for the *TokenBank* contract, the execution of ''WithdrawToHolder()'' triggers the callback function of the*{TokenBankExploit*contract, causing ''WithdrawToHolder()'' to be called repeatedly. Since the account balance has not yet been updated (i.e., the statement ''Holders[\_addr] -= \_wei'' has not been executed), the attacker can repeatedly receive the transferred amount until the gas resources are exhausted or the *TokenBank* contract balance is insufficient. Finally, the attacker can call the helper contract's function ''get\_money()'' to obtain the entire balance of the helper contract and then destroy it. Through this process, the attacker acquires funds that originally did not belong to them, damaging the economic interests of other legitimate users.
+(iii) In line 18, the *call.value* operation contains *unchecked-lowlevel*, *code-no-effects*, and *reentrancy-eth* issues. First, the *call.value* does not check the return value of the call. When the call fails, the account \_addr does not receive the transferred funds, but its balance in the *TokenBank* contract is reduced. Second, since the transfer operation *call.value* lacks the data field, although the contract compiler does not report a compilation error, the operation has no effect when called, causing the user to execute a withdrawal operation while the contract balance is deducted without actually receiving the transfer, leading to economic loss. Finally, because the operation ''Holders[\_addr] -= \_wei'' is performed after the *call.value*, a malicious attacker could exploit a reentrancy attack. Specifically, the attacker can construct a helper attack contract *TokenBankExploit* that contains a callback fallback function calling the function ''WithdrawToHolder()'' as shown in the code above. When the attacker executes the function ''exploitcall()'' to sequentially complete the deposit, owner initialization, and withdrawal operations for the *TokenBank* contract, the execution of ''WithdrawToHolder()'' triggers the callback function of the *TokenBankExploit* contract, causing ''WithdrawToHolder()'' to be called repeatedly. Since the account balance has not yet been updated (i.e., the statement ''Holders[\_addr] -= \_wei'' has not been executed), the attacker can repeatedly receive the transferred amount until the gas resources are exhausted or the *TokenBank* contract balance is insufficient. Finally, the attacker can call the helper contract's function ''get\_money()'' to obtain the entire balance of the helper contract and then destroy it. Through this process, the attacker acquires funds that originally did not belong to them, damaging the economic interests of other legitimate users.
 
 (iv) The functions ''Deposit()'' and ''WithdrawToHolder()'' have *external-function* optimization issues. Since these two functions are not called internally within the contract and are only used externally, their visibility can be declared as *external* to save gas costs during function execution. In response to the contract bugs described above, AutoMender, with its context-awareness and understanding of the contract's operational logic, along with sufficient knowledge of contract bugs, has correctly and thoroughly fixed the issues. The fixed contract is shown in Listing \ref{listing:chap6_TokenBank-fixed}.
 
-The *TokenBank* contract after repaire.
+### Repaired Contract
 ```
 	contract TokenBank is Token {
 		address public owner;
@@ -149,7 +195,9 @@ As shown above, AutoMender made the following modifications for each bug:
 
 As can be seen, the bugs also require the repair tool to understand the operational logic of the contract, not just matching specific bug code. Since the code for these different bugs needs to be integrated into a single repair solution, many methods cannot fully fix the contract bugs. This is the fundamental reason for AutoMender introducing the repair layer.
 
-The *Wallet* contract.
+## 👛 Wallet Version-aware Case
+
+### Vulnerable Contract
 ```
 	pragma solidity ^0.5.0; 
 	contract Wallet {
@@ -188,7 +236,7 @@ It is worth noting that, due to the contract's compilation version being 0.5.0 o
 
 Therefore, during contract repair, different contract compilation versions can impact the repair solution for the same bug code. Since templates cannot account for all such scenarios, some existing predefined template-based repair methods, such as Elysium and RLRep, fail to properly fix these bugs.
 
-The contract *Wallet* after repaire.
+### Repaired Contract
 ```
 	pragma solidity ^0.5.0; 
 	contract Wallet {
@@ -211,12 +259,14 @@ The contract *Wallet* after repaire.
 	}
 ```
 
-**PrivateDeposit bug Contract (5 transactions, 0.0E+00 Wei).** This contract can also be seen as a private "bank" for managing assets, with the details shown in above code. Unlike the previous two "bank" contracts, this contract uses a *Log* contract to record each call's events, making it easier to trace errors when they occur. Specifically, when creating the contract, the contract creator declares their account as the contract's owner ''owner'' and creates a *Log* contract object. The *Log* contract, as shown in below code, is used by the *PrivateDeposit* contract to call the function ''AddMessage(address,uint,string)'' to encapsulate event content into a *Message* structure object called ''LastMsg'', and then adds it to the event sequence ''History''. As shown in Listing \ref{listing:chap6_PrivateDeposit}, before using the event recorder normally, the contract owner needs to call the function ''setLog(address)'' to instantiate the state recorder object ''TransferLog'' using the *Log* contract's address. Then, users can normally call the function ''Deposit()'' to store funds in the contract’s account, and when they need to withdraw, they can call the function ''CashOut(uint)''.
+## 🔐 PrivateDeposit Multi-bug Case
+
+**PrivateDeposit bug contract (5 transactions, `0.0E+00 Wei`).** This contract can also be seen as a private "bank" for managing assets, with the details shown in the code below. Unlike the previous two "bank" contracts, it uses a *Log* contract to record calls and make errors easier to trace. When creating the contract, the creator declares their account as `owner` and creates a *Log* contract object. Before using the event recorder, the owner calls `setLog(address)` to instantiate `TransferLog`; users can then call `Deposit()` and `CashOut(uint)` to manage funds.
 
 However, this contract also contains several bugs, specifically:
 (i) The function modifier ''onlyOwner()'' contains a *tx-origin* bug. Since it uses *tx.origin* to verify the identity of the contract caller, i.e., ''require(tx.origin == owner)'', an attacker can bypass this check and perform illegal operations using a helper contract as shown in Listing \ref{listing:chap6_PrivateDeposit-tx-origin}. Specifically, the attacker constructs a *Log* contract with the same name as the log library, containing two functions: one is ''getMoney()'' to call the *PrivateDeposit* contract's function ''setLog(address)'', and the other is a function ''AddMessage(address, uint, string)'' that has the same name and parameters as the one used for logging operations. Since the contract code can be deployed on the blockchain without being made public, with only the contract bytecode and the ABI (interface of the functions) stored on the blockchain, the attractive name of the ''getMoney()'' function can lure the *PrivateDeposit* contract creator into calling it. This will initiate a cross-contract call to the ''setLog()'' function, and since the transaction's source *tx.origin* is the contract creator, it can pass the *onlyOwner()* check and instantiate the helper attack contract *Log* as the log recorder. The function ''AddMessage()'' contains only a line that executes the failing statement ''require(false)'', which triggers the rollback mechanism, causing all calls to this function to fail, thereby rendering the *PrivateDeposit* contract's functions ''Deposit()'' and ''CashOut()'' inoperable.
 
-*PrivateDeposit* contract.
+### Vulnerable Contract
 ```
 	contract PrivateDeposit {
 		mapping (address => uint) public balances;
@@ -253,7 +303,7 @@ However, this contract also contains several bugs, specifically:
 
 (ii) In line 24, the *call.value* operation contains both *reentrancy-eth* and *reentrancy-events* bugs. The state variable update operation ''balances[msg.sender] -= \_am'' and the event logging operation ''TransferLog.AddMessage(msg.sender, msg.value, "Deposit")'' both occur after the *call.value*, allowing a malicious attacker to perform a reentrancy attack. Specifically, the attacker can construct a helper attack contract *PrivateDepositExploit*, which contains a callback fallback function that calls the function ''CashOut()'', as shown in Listing \ref{listing:chap6_PrivateDeposit-reentrancy-eth-attack}. When the attacker executes the function ''exploitcall()'' to sequentially perform the deposit and withdrawal operations on the *PrivateDeposit* contract, the execution of *CashOut()* triggers the callback function of the *PrivateDepositExploit* contract. This causes *CashOut()* to be called repeatedly. Since the account balance has not yet been updated and the transfer operation event has not been logged, the attacker can repeatedly claim the transferred amount until the gas resources are exhausted or the *PrivateDeposit* contract balance is insufficient. As in the previous reentrancy example, the attacker can eventually call the helper contract’s function ''get\_money()'' to obtain the entire balance of the helper contract and then destroy the contract.
 
-*Log* contract.
+### Supporting Log Contract
 ```
 	contract Log {
 		struct Message {
@@ -274,10 +324,10 @@ However, this contract also contains several bugs, specifically:
 	}
 ```
 
-The helper contract for the *tx-origin* bug attack on the *PrivateDeposit* contract.
+### `tx.origin` Attack Contract
 ```
 	contract Log {
-		address privateDeposit_address = "0x..."; //Replace the real address of the *PrivateDeposit} contract
+		address privateDeposit_address = "0x..."; // Replace with the real PrivateDeposit address.
 		function getMoney() public {
 			PrivateDeposit privateDeposit = PrivateDeposit(privateDeposit_address);
 			privateDeposit.setLog(address(this));
@@ -288,7 +338,7 @@ The helper contract for the *tx-origin* bug attack on the *PrivateDeposit* contr
 	}
 ```
 
-The helper contract for the *reentrancy-eth* bug attack on the *PrivateDeposit* contract.
+### Reentrancy Attack Contract
 ```
 	contract PrivateDepositExploit {
 		address owner; //Attack settings
@@ -320,7 +370,7 @@ The helper contract for the *reentrancy-eth* bug attack on the *PrivateDeposit* 
 
 As in the previous contract repair examples, AutoMender, with its superior understanding of contract semantics and bug repair capabilities, addressed these issues. The fixed contract is shown in Listing \ref{listing:chap6_PrivateDeposit-fixed}.
 
-The code of the *PrivateDeposit* contract after repaire.
+### Repaired Contract
 ```
 	contract PrivateDeposit {
 		mapping (address => uint) public balances;
@@ -367,4 +417,16 @@ As described above, AutoMender made the following changes:
 
 (v) AutoMender changed the visibility of the functions ''setLog()'', ''Deposit()'', and ''CashOut()'' to *external* to reduce gas costs when called.
 
-However, due to the limited types of bugs that the repair templates can fix, existing methods like SmartFix and SCRepair cannot fully address the bugs mentioned above. Additionally, due to the limited semantic understanding of smaller models, SmartRep is unable to comprehensively repair these bugs. This also highlights the inherent advantages of large language models: on one hand, they can perceive the contract’s operational logic, enabling them to rewrite contracts; on the other hand, they can deeply understand the principles of bugs, enabling the repair of bug code. 
+These interacting changes illustrate why multi-bug repair requires contract-level context rather than independent line-level substitutions. Comparisons with external repair systems must be drawn from reproduced baseline artifacts; this documentation does not by itself establish comparative performance.
+
+## 🧪 Research Boundary
+
+The listings above are explanatory excerpts from the research artifact, not newly generated or independently validated outputs. A paper-eligible result requires the matching Solidity compiler, all six real detector backends, behavioral validation, and a complete run manifest. Fake or unavailable backends cannot be used to substantiate repair claims.
+
+---
+
+<div align="center">
+
+[AutoMender Home](../README.md) · [Dataset 1](../Dataset1/README.md) · [Security Incidents](../Security_incidents/README.md) · [Engineering Guide](../Code/README.md)
+
+</div>
